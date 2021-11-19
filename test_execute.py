@@ -138,7 +138,7 @@ def test(
     save_txt=False,  # for auto-labelling
     save_hybrid=False,  # for hybrid auto-labelling
     save_conf=False,  # save auto-label confidences
-    plots=False,
+    plots=True,
     wandb_logger=None,
     compute_loss=None,
     v5_metric=False,
@@ -223,13 +223,13 @@ def test(
             # out_q = [None] * nb
 
             # time1 = time.time()
-            out = runDPU(dpu_runner, img)
+            out_DPU = runDPU(dpu_runner, img)
             # time2 = time.time()
             # timetotal = time2 - time1
             # fps = float(nb / timetotal)
             # print("Throughput=%.2f fps, total frames = %.0f, time=%.4f seconds" % (fps, nb, timetotal))
 
-            out, train_out = forward_detect(model_detect, out)
+            out, train_out = forward_detect(model_detect, out_DPU)
 
             t0 += time_synchronized() - t
 
