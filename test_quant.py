@@ -113,16 +113,6 @@ def test(
         quant_model = quantizer.quant_model
         #####################################################################################
 
-    # handle quantization result
-    # if quant_mode == "calib":
-    #     quantizer.export_quant_config()
-    #     sys.exit()
-    # if deploy:
-    #     quantizer.export_torch_script()
-    #     quantizer.export_onnx_model()
-    #     quantizer.export_xmodel(deploy_check=False)
-    #     sys.exit()
-
     # print(quant_model)
 
     # ! Add back the last layer
@@ -187,12 +177,12 @@ def test(
             #     loss += compute_loss([x.float() for x in train_out], targets)[1][:3]  # box, obj, cls
 
             # Run NMS
-            targets[:, 2:] *= torch.Tensor([width, height, width, height]).to(device)  # to pixels
-            lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
-            t = time_synchronized()
-            out = non_max_suppression(out, conf_thres=conf_thres, iou_thres=iou_thres, labels=lb, multi_label=True)
-            t1 += time_synchronized() - t
-
+            # targets[:, 2:] *= torch.Tensor([width, height, width, height]).to(device)  # to pixels
+            # lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
+            # t = time_synchronized()
+            # out = non_max_suppression(out, conf_thres=conf_thres, iou_thres=iou_thres, labels=lb, multi_label=True)
+            # t1 += time_synchronized() - t
+    """
         # Statistics per image
         for si, pred in enumerate(out):
             labels = targets[targets[:, 0] == si, 1:]
@@ -318,7 +308,7 @@ def test(
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-
+    """
     # handle quantization result
     if quant_mode == "calib":
         quantizer.export_quant_config()
@@ -329,7 +319,8 @@ def test(
         quantizer.export_xmodel(deploy_check=False)
         sys.exit(0)
 
-    return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
+    # return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
+    return 0
 
 
 if __name__ == "__main__":
