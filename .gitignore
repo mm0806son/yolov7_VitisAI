@@ -262,3 +262,7 @@ crashlytics.properties
 crashlytics-build.properties
 fabric.properties
 MTV2/
+
+quantize_result/
+
+*.xz
