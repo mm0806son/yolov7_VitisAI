@@ -352,7 +352,7 @@ def img2label_paths(img_paths):
 
 class LoadImagesAndLabels(Dataset):  # for training/testing
     def __init__(self, path, img_size=640, batch_size=16, augment=False, hyp=None, rect=False, image_weights=False,
-                 cache_images=False, single_cls=False, stride=32, pad=0.0, prefix=''):
+                 cache_images=False, single_cls=False, stride=32, pad=0.0, prefix='', input_scale=1):
         self.img_size = img_size
         self.augment = augment
         self.hyp = hyp
@@ -362,6 +362,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         self.mosaic_border = [-img_size // 2, -img_size // 2]
         self.stride = stride
         self.path = path        
+        self.input_scale = input_scale
         #self.albumentations = Albumentations() if augment else None
 
         try:
@@ -625,6 +626,11 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         # Convert
         img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
         img = np.ascontiguousarray(img)
+
+        # 将图像维度调整到DPU要求的定点输入
+        img = torch.from_numpy(img)
+        img = img.permute(1, 2, 0).float().numpy() / 255 * self.inputscale + 0.5
+        img = img.astype(np.int8)
 
         return torch.from_numpy(img), labels_out, self.img_files[index], shapes
 

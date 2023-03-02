@@ -1,6 +1,6 @@
 from  hubconf import custom
-model = custom(path_or_model='odessa.pt')  # custom example
-# model = create(name='yolov7', pretrained=True, channels=3, classes=80, autoshape=True)  # pretrained example
+# model = custom(path_or_model='odessa.pt')  # custom example
+model = create(name='yolov7', pretrained=True, channels=3, classes=80, autoshape=True)  # pretrained example
 
 # Verify inference
 import numpy as np
