@@ -3,7 +3,7 @@ import json
 import os
 from pathlib import Path
 from threading import Thread
-
+import sys
 import numpy as np
 import torch
 import yaml
@@ -96,6 +96,8 @@ def test(data,
     seen = 0
     confusion_matrix = ConfusionMatrix(nc=nc)
     names = {k: v for k, v in enumerate(model.names if hasattr(model, 'names') else model.module.names)}
+    # print(names)
+    # sys.exit(0)
     coco91class = coco80_to_coco91_class()
     s = ('%20s' + '%12s' * 6) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')
     p, r, f1, mp, mr, map50, map, t0, t1 = 0., 0., 0., 0., 0., 0., 0., 0., 0.
@@ -111,8 +113,16 @@ def test(data,
         with torch.no_grad():
             # Run model
             t = time_synchronized()
+            # print(model(img, augment=augment))
+            # sys.exit(0)
             out, train_out = model(img, augment=augment)  # inference and training outputs
+            # print("\n############ out ############\n")
+            # print(len(out))
+            # print("\n########## train_out #############\n")
+            # print(train_out)
+            # sys.exit(0)
             t0 += time_synchronized() - t
+            
 
             # Compute loss
             if compute_loss:

@@ -33,7 +33,7 @@ from utils.metrics import ap_per_class, ConfusionMatrix
 from utils.plots import plot_images, output_to_target, plot_study_txt
 from utils.torch_utils import select_device, time_synchronized, TracedModel
 
-from pytorch_nndct.apis import torch_quantizer
+# from pytorch_nndct.apis import torch_quantizer
 
 
 def forward_detect(model_detect, x):
@@ -87,51 +87,39 @@ def test(
 
     # Load model
     model = attempt_load(weights, map_location=device)  # load FP32 model
+    print(model)
     gs = max(int(model.stride.max()), 32)  # grid size (max stride)
     imgsz = check_img_size(imgsz, s=gs)  # check img_size
 
     # ! inspect
     input = torch.randn([batch_size, 3, 512, 672])  # ! 640 640?
-    # layer_detect = model.model[-1]
+    layer_detect = model.model[-1]
     model_detect = copy.deepcopy(model)
     model_ori = copy.deepcopy(model)
     model_detect.model = nn.Sequential(model.model[-1])
     model.model = nn.Sequential(*list(model.model.children())[:-1])
 
-    if quant_mode == "float":
-        quant_model = model
-        if inspect:
-            if not target:
-                raise RuntimeError("A target should be specified for inspector.")
+    # handle quantization result
+    # if quant_mode == "calib":
+    #     quantizer.export_quant_config()
+    #     sys.exit()
+    # if deploy:
+    #     quantizer.export_torch_script()
+    #     quantizer.export_onnx_model()
+    #     quantizer.export_xmodel(deploy_check=False)
+    #     sys.exit()
 
-            from pytorch_nndct.apis import Inspector
-
-            # create inspector
-            inspector = Inspector(target)  # by name
-            # start to inspect
-            inspector.inspect(quant_model, (input,), device=device, image_format="svg")
-            sys.exit()
-
-    else:
-        ## new api
-        ####################################################################################
-        quantizer = torch_quantizer(
-            quant_mode, model, (input), device=device, quant_config_file=config_file, target=target
-        )
-
-        quant_model = quantizer.quant_model
-        #####################################################################################
-
-    # print(quant_model)
+    # print(model)
 
     # ! Add back the last layer
-    # quant_model.add_module("Detect", layer_detect)
+    # model.add_module("Detect", layer_detect)
 
-    # print(quant_model.module_0.names)
+    # print(model.module_0.names)
     # sys.exit()
 
-    quant_model.eval()
+    model.eval()
     model_detect.eval()
+    model_ori.eval()
     if isinstance(data, str):
         is_coco = data.endswith("coco.yaml")
         with open(data) as f:
@@ -148,7 +136,7 @@ def test(
     # Dataloader
     # if not training:
     if device.type != "cpu":
-        quant_model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(quant_model.parameters())))  # run once
+        model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
     task = opt.task if opt.task in ("train", "val", "test") else "val"  # path to train/val/test images
     dataloader = create_dataloader(
         data[task], imgsz, batch_size, gs, opt, pad=0.5, rect=True, prefix=colorstr(f"{task}: ")
@@ -156,7 +144,7 @@ def test(
 
     seen = 0
     confusion_matrix = ConfusionMatrix(nc=nc)
-    # names = {k: v for k, v in enumerate(quant_model.names if hasattr(quant_model, "names") else quant_model.module.names)} # find names from model
+    # names = {k: v for k, v in enumerate(model.names if hasattr(model, "names") else model.module.names)} # find names from model
     names = {0: "Boat", 1: "Human"}
     s = ("%20s" + "%12s" * 6) % ("Class", "Images", "Labels", "P", "R", "mAP@.5", "mAP@.5:.95")
     p, r, f1, mp, mr, map50, map, t0, t1 = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
@@ -173,22 +161,25 @@ def test(
         with torch.no_grad():
             # Run model
             t = time_synchronized()
-            # print("\n############ out ############\n")
-            # print(quant_model(img, augment=augment))
-            # print(f"len(out) = ", len(quant_model(img, augment=augment)))
+            print("\n############ out ############\n")
+            # print(model(img, augment=augment))
+            # print(f"len(out) = ", len(model(img, augment=augment)))
             # sys.exit(0)
-            out = quant_model(img, augment=augment)  # inference and training outputs
-            # print(out_x,"\n ### out_y ### \n", out_y)
-            out = list(out)
-            out_y = out[1:]
-            # print("\n\033[36m ### out ### \n",type(out),type(out_y), "\033[0m\n")
+            # out, train_out = model_ori(img, augment=augment)
+            # print(model_ori)
+            out_x, out_y = model(img, augment=augment)  # inference
+            print(model)
+            print("\n\033[36m ### out_x ### \n", out_x, "\033[0m\n")
+            print("\n\033[36m ### out_y ### \n", out_y, "\033[0m\n")
+            print(model_detect)
             out, train_out = forward_detect(model_detect, out_y)
-            # sys.exit(0)
+            # out = model_detect(out, augment=augment)  # model outputs
+            sys.exit(0)
             t0 += time_synchronized() - t
 
             # Compute loss
-            if compute_loss:
-                loss += compute_loss([x.float() for x in train_out], targets)[1][:3]  # box, obj, cls
+            # if compute_loss:
+            #     loss += compute_loss([x.float() for x in train_out], targets)[1][:3]  # box, obj, cls
 
             # Run NMS
             targets[:, 2:] *= torch.Tensor([width, height, width, height]).to(device)  # to pixels
@@ -196,7 +187,7 @@ def test(
             t = time_synchronized()
             out = non_max_suppression(out, conf_thres=conf_thres, iou_thres=iou_thres, labels=lb, multi_label=True)
             t1 += time_synchronized() - t
-    # """
+
         # Statistics per image
         for si, pred in enumerate(out):
             labels = targets[targets[:, 0] == si, 1:]
@@ -322,19 +313,8 @@ def test(
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-    # """
-    # handle quantization result
-    if quant_mode == "calib":
-        quantizer.export_quant_config()
-        sys.exit(0)
-    if deploy:
-        quantizer.export_torch_script()
-        quantizer.export_onnx_model()
-        quantizer.export_xmodel(deploy_check=True)
-        sys.exit(0)
 
-    # return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
-    return 0
+    return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
 
 
 if __name__ == "__main__":

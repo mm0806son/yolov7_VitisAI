@@ -600,7 +600,11 @@ class Model(nn.Module):
 
     def forward_once(self, x, profile=False):
         y, dt = [], []  # outputs
+        # count = 0
         for m in self.model:
+            # count += 1
+            # if count == 72:
+            #     print("count = ",count)
             if m.f != -1:  # if not from previous layer
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
 
@@ -628,7 +632,8 @@ class Model(nn.Module):
 
         if profile:
             print('%.1fms total' % sum(dt))
-        return x
+        # return x
+        return x,y[-3:]
 
     def _initialize_biases(self, cf=None):  # initialize biases into Detect(), cf is class frequency
         # https://arxiv.org/abs/1708.02002 section 3.3
