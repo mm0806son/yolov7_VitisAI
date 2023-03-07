@@ -71,6 +71,7 @@ def test(
     trace=False,
     is_coco=False,
     v5_metric=False,
+    output_dir=None,
 ):
     # Initialize/load model and set device
     # training = model is not None
@@ -91,12 +92,12 @@ def test(
     imgsz = check_img_size(imgsz, s=gs)  # check img_size
 
     # ! inspect
-    input = torch.randn([batch_size, 3, 512, 672])  # ! 640 640?
+    input = torch.randn([batch_size, 3, 640,640])  # ! 640 640?
     # layer_detect = model.model[-1]
-    model_detect = copy.deepcopy(model)
-    model_ori = copy.deepcopy(model)
-    model_detect.model = nn.Sequential(model.model[-1])
-    model.model = nn.Sequential(*list(model.model.children())[:-1])
+    # model_detect = copy.deepcopy(model)
+    # model_ori = copy.deepcopy(model)
+    # model_detect.model = nn.Sequential(model.model[-1])
+    # model.model = nn.Sequential(*list(model.model.children())[:-1])
 
     if quant_mode == "float":
         quant_model = model
@@ -109,14 +110,14 @@ def test(
             # create inspector
             inspector = Inspector(target)  # by name
             # start to inspect
-            inspector.inspect(quant_model, (input,), device=device, image_format="svg")
+            inspector.inspect(quant_model, (input,), device=device, image_format="svg",verbose_level = 0, output_dir=output_dir)
             sys.exit()
 
     else:
         ## new api
         ####################################################################################
         quantizer = torch_quantizer(
-            quant_mode, model, (input), device=device, quant_config_file=config_file, target=target
+            quant_mode, model, (input), device=device, quant_config_file=config_file, target=target, output_dir=output_dir
         )
 
         quant_model = quantizer.quant_model
@@ -131,7 +132,7 @@ def test(
     # sys.exit()
 
     quant_model.eval()
-    model_detect.eval()
+    # model_detect.eval()
     if isinstance(data, str):
         is_coco = data.endswith("coco.yaml")
         with open(data) as f:
@@ -179,16 +180,14 @@ def test(
             # sys.exit(0)
             out = quant_model(img, augment=augment)  # inference and training outputs
             # print(out_x,"\n ### out_y ### \n", out_y)
-            out = list(out)
-            out_y = out[1:]
-            # print("\n\033[36m ### out ### \n",type(out),type(out_y), "\033[0m\n")
-            out, train_out = forward_detect(model_detect, out_y)
+            
+            # inference and training outputs
             # sys.exit(0)
             t0 += time_synchronized() - t
 
             # Compute loss
-            if compute_loss:
-                loss += compute_loss([x.float() for x in train_out], targets)[1][:3]  # box, obj, cls
+            # if compute_loss:
+            #     loss += compute_loss([x.float() for x in train_out], targets)[1][:3]  # box, obj, cls
 
             # Run NMS
             targets[:, 2:] *= torch.Tensor([width, height, width, height]).to(device)  # to pixels
@@ -196,7 +195,7 @@ def test(
             t = time_synchronized()
             out = non_max_suppression(out, conf_thres=conf_thres, iou_thres=iou_thres, labels=lb, multi_label=True)
             t1 += time_synchronized() - t
-    # """
+    """
         # Statistics per image
         for si, pred in enumerate(out):
             labels = targets[targets[:, 0] == si, 1:]
@@ -322,15 +321,15 @@ def test(
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-    # """
+    """
     # handle quantization result
     if quant_mode == "calib":
         quantizer.export_quant_config()
         sys.exit(0)
     if deploy:
-        quantizer.export_torch_script()
-        quantizer.export_onnx_model()
-        quantizer.export_xmodel(deploy_check=False)
+        quantizer.export_torch_script(output_dir=output_dir)
+        quantizer.export_onnx_model(output_dir=output_dir)
+        quantizer.export_xmodel(deploy_check=False, output_dir=output_dir)
         sys.exit(0)
 
     # return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
@@ -370,6 +369,8 @@ if __name__ == "__main__":
         help="quantization mode. 0: no quantization, evaluate float model, calib: quantize, test: evaluate quantized model",
     )
     parser.add_argument("--config_file", default=None, help="quantization configuration file")
+    parser.add_argument("--output_dir", type=str, default="quantize_result", help="path to store quantized results")
+
 
     opt = parser.parse_args()
     opt.data = check_file(opt.data)  # check file
@@ -394,4 +395,5 @@ if __name__ == "__main__":
         save_hybrid=opt.save_hybrid,
         save_conf=opt.save_conf,
         trace=not opt.no_trace,
+        output_dir=opt.output_dir,
     )
