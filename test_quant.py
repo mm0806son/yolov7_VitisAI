@@ -71,6 +71,7 @@ def test(
     trace=False,
     is_coco=False,
     v5_metric=False,
+    output_dir=None,
 ):
     # Initialize/load model and set device
     # training = model is not None
@@ -109,14 +110,14 @@ def test(
             # create inspector
             inspector = Inspector(target)  # by name
             # start to inspect
-            inspector.inspect(quant_model, (input,), device=device, image_format="svg")
+            inspector.inspect(quant_model, (input,), device=device, image_format="svg",verbose_level = 0, output_dir=output_dir)
             sys.exit()
 
     else:
         ## new api
         ####################################################################################
         quantizer = torch_quantizer(
-            quant_mode, model, (input), device=device, quant_config_file=config_file, target=target
+            quant_mode, model, (input), device=device, quant_config_file=config_file, target=target, output_dir=output_dir
         )
 
         quant_model = quantizer.quant_model
@@ -328,9 +329,9 @@ def test(
         quantizer.export_quant_config()
         sys.exit(0)
     if deploy:
-        quantizer.export_torch_script()
-        quantizer.export_onnx_model()
-        quantizer.export_xmodel(deploy_check=True)
+        quantizer.export_torch_script(output_dir=output_dir)
+        quantizer.export_onnx_model(output_dir=output_dir)
+        quantizer.export_xmodel(deploy_check=False, output_dir=output_dir)
         sys.exit(0)
 
     # return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
@@ -370,6 +371,8 @@ if __name__ == "__main__":
         help="quantization mode. 0: no quantization, evaluate float model, calib: quantize, test: evaluate quantized model",
     )
     parser.add_argument("--config_file", default=None, help="quantization configuration file")
+    parser.add_argument("--output_dir", type=str, default="quantize_result", help="path to store quantized results")
+
 
     opt = parser.parse_args()
     opt.data = check_file(opt.data)  # check file
@@ -394,4 +397,5 @@ if __name__ == "__main__":
         save_hybrid=opt.save_hybrid,
         save_conf=opt.save_conf,
         trace=not opt.no_trace,
+        output_dir=opt.output_dir,
     )
