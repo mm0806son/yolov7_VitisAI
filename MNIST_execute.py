@@ -179,7 +179,7 @@ def app(image_dir, threads, model):
 def main():
     # construct the argument parser and parse the arguments
     ap = argparse.ArgumentParser()
-    ap.add_argument("-d", "--image_dir", type=str, default="images", help="Path to folder of images. Default is images")
+    ap.add_argument("-d", "--image_dir", type=str, default="figure", help="Path to folder of images. Default is images")
     ap.add_argument("-t", "--threads", type=int, default=1, help="Number of threads. Default is 1")
     ap.add_argument(
         "-m", "--model", type=str, default="CNN_zcu102.xmodel", help="Path of xmodel. Default is CNN_zcu102.xmodel"

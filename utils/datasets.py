@@ -63,7 +63,7 @@ def exif_size(img):
 
 
 def create_dataloader(path, imgsz, batch_size, stride, opt, hyp=None, augment=False, cache=False, pad=0.0, rect=False,
-                      rank=-1, world_size=1, workers=8, image_weights=False, quad=False, prefix=''):
+                      rank=-1, world_size=1, workers=8, image_weights=False, quad=False, prefix='', input_scale=1):
     # Make sure only the first process in DDP process the dataset first, and the following others can use the cache
     with torch_distributed_zero_first(rank):
         dataset = LoadImagesAndLabels(path, imgsz, batch_size,
@@ -87,11 +87,23 @@ def create_dataloader(path, imgsz, batch_size, stride, opt, hyp=None, augment=Fa
                         num_workers=nw,
                         sampler=sampler,
                         pin_memory=True,
-                        collate_fn=LoadImagesAndLabels.collate_fn4 if quad else LoadImagesAndLabels.collate_fn)
+                        collate_fn=LoadImagesAndLabels.collate_fn4 if quad else LoadImagesAndLabels.collate_fn,
+                        input_scale=input_scale)
     return dataloader, dataset
 
+class DataLoaderWithScale(torch.utils.data.dataloader.DataLoader):
+    def __init__(self, dataset, batch_size=1, shuffle=False, sampler=None, batch_sampler=None,
+                 num_workers=0, collate_fn=None, pin_memory=False, drop_last=False, timeout=0,
+                 worker_init_fn=None, *, input_scale=1):
+        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, sampler=sampler,
+                         batch_sampler=batch_sampler, num_workers=num_workers, collate_fn=collate_fn,
+                         pin_memory=pin_memory, drop_last=drop_last, timeout=timeout,
+                         worker_init_fn=worker_init_fn)
+        self.input_scale = input_scale
 
-class InfiniteDataLoader(torch.utils.data.dataloader.DataLoader):
+
+
+class InfiniteDataLoader(DataLoaderWithScale):
     """ Dataloader that reuses workers
 
     Uses same syntax as vanilla DataLoader
@@ -629,7 +641,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         # 将图像维度调整到DPU要求的定点输入
         img = torch.from_numpy(img)
-        img = img.permute(1, 2, 0).float().numpy() / 255 * self.inputscale + 0.5
+        img = img.permute(1, 2, 0).float().numpy() / 255 * self.input_scale + 0.5
         img = img.astype(np.int8)
 
         return torch.from_numpy(img), labels_out, self.img_files[index], shapes
