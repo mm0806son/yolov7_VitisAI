@@ -44,69 +44,54 @@ from utils.torch_utils import select_device, time_synchronized, TracedModel
 def get_child_subgraph_dpu(graph: "Graph") -> List["Subgraph"]:
     assert graph is not None, "'graph' should not be None."
     root_subgraph = graph.get_root_subgraph()
-    assert (root_subgraph is not None), "Failed to get root subgraph of input Graph object."
+    assert root_subgraph is not None, "Failed to get root subgraph of input Graph object."
     if root_subgraph.is_leaf:
         return []
     child_subgraphs = root_subgraph.toposort_child_subgraph()
     assert child_subgraphs is not None and len(child_subgraphs) > 0
-    return [
-        cs
-        for cs in child_subgraphs
-        if cs.has_attr("device") and cs.get_attr("device").upper() == "DPU"
-    ]
+    return [cs for cs in child_subgraphs if cs.has_attr("device") and cs.get_attr("device").upper() == "DPU"]
 
 
-def runDPU(dpu,img):
-    '''get tensor'''
+def runDPU(dpu, img):
+    """get tensor"""
     inputTensors = dpu.get_input_tensors()
     outputTensors = dpu.get_output_tensors()
     input_ndim = tuple(inputTensors[0].dims)
-    output_ndim = tuple(outputTensors[0].dims)
+    output_ndim_0 = tuple(outputTensors[0].dims)
+    output_ndim_1 = tuple(outputTensors[1].dims)
+    output_ndim_2 = tuple(outputTensors[2].dims)
+
 
     # we can avoid output scaling if use argmax instead of softmax
-    #output_fixpos = outputTensors[0].get_attr("fix_point")
-    #output_scale = 1 / (2**output_fixpos)
+    # output_fixpos = outputTensors[0].get_attr("fix_point")
+    # output_scale = 1 / (2**output_fixpos)
     start = 0
     batchSize = input_ndim[0]
     n_of_images = len(img)
     count = 0
-    write_index = start
-    ids=[]
-    ids_max = 10
-    outputData = []
-    for i in range(ids_max):
-        outputData.append([np.empty(output_ndim, dtype=np.int8, order="C")])
+
+    outputData = [np.empty(output_ndim_0, dtype=np.int8, order="C"),np.empty(output_ndim_1, dtype=np.int8, order="C"),np.empty(output_ndim_2, dtype=np.int8, order="C")]
+
     while count < n_of_images:
-        if (count+batchSize<=n_of_images):
+        if count + batchSize <= n_of_images:
             runSize = batchSize
         else:
-            runSize=n_of_images-count
+            runSize = n_of_images - count
 
-        '''prepare batch input/output '''
+        """prepare batch input/output """
         inputData = []
         inputData = [np.empty(input_ndim, dtype=np.int8, order="C")]
 
-        '''init input image to input buffer '''
+        """init input image to input buffer """
+        # ? imageRun defined but never used?
         for j in range(runSize):
             imageRun = inputData[0]
             imageRun[j, ...] = img[(count + j) % n_of_images].reshape(input_ndim[1:])
-        '''run with batch '''
-        job_id = dpu.execute_async(inputData,outputData[len(ids)])
-        ids.append((job_id,runSize,start+count))
-        count = count + runSize 
-        if count<n_of_images:
-            if len(ids) < ids_max-1:
-                continue
-        for index in range(len(ids)):
-            dpu.wait(ids[index][0])
-            write_index = ids[index][2]
-            '''store output vectors '''
-            for j in range(ids[index][1]):
-                # we can avoid output scaling if use argmax instead of softmax
-                # out_q[write_index] = np.argmax(outputData[0][j] * output_scale)
-                out_q[write_index] = outputData[index][0][j]
-                write_index += 1
-        ids=[]
+        """run """
+        job_id = dpu.execute_async(inputData, outputData)
+        dpu.wait(job_id)
+
+        return outputData
 
 '''
 def runDPU(dpu, img):
@@ -145,6 +130,7 @@ def runDPU(dpu, img):
         count = count + runSize
     return outputData
 '''
+
 
 def forward_detect(model_detect, x):
     m = model_detect.model[0]
@@ -222,17 +208,26 @@ def test(
     task = opt.task if opt.task in ("train", "val", "test") else "val"  # path to train/val/test images
 
     global out_q
-    
 
     g = xir.Graph.deserialize(xmodel)
     subgraphs = get_child_subgraph_dpu(g)
     dpu_runner = vart.Runner.create_runner(subgraphs[0], "run")
-    
+
     # 读取量化后模型对输入的定点数数据的小数点位置，得出在浮点数转定点数时需要乘的系数input_scale
     input_fixpos = dpu_runner.get_input_tensors()[0].get_attr("fix_point")
-    input_scale = 2 ** input_fixpos
+    input_scale = 2**input_fixpos
 
-    dataloader = create_dataloader(data[task], imgsz, batch_size, gs, opt, pad=0.5, rect=True, prefix=colorstr(f"{task}: "), input_scale=input_scale)[0]
+    dataloader = create_dataloader(
+        data[task],
+        imgsz,
+        batch_size,
+        gs,
+        opt,
+        pad=0.5,
+        rect=True,
+        prefix=colorstr(f"{task}: "),
+        input_scale=input_scale,
+    )[0]
 
     seen = 0
     confusion_matrix = ConfusionMatrix(nc=nc)
@@ -259,7 +254,7 @@ def test(
             # sys.exit(0)
 
             # out = quant_model(img, augment=augment)  # ! inference and training outputs
-            
+
             # out_q = [None] * nb
             time1 = time.time()
             out = runDPU(dpu_runner, img)
@@ -267,12 +262,15 @@ def test(
             timetotal = time2 - time1
 
             fps = float(nb / timetotal)
-            print("Throughput=%.2f fps, total frames = %.0f, time=%.4f seconds" %(fps, nb, timetotal))
+            print("Throughput=%.2f fps, total frames = %.0f, time=%.4f seconds" % (fps, nb, timetotal))
 
             out = list(out)
-            out_y = out[1:]
+            # out_y = out[1:]
             # print("\n\033[36m ### out ### \n",type(out),type(out_y), "\033[0m\n")
-            out, train_out = forward_detect(model_detect, out_y)
+            out[0] = torch.from_numpy(out[0]).permute(0,3,1,2)
+            out[1] = torch.from_numpy(out[1]).permute(0,3,1,2)
+            out[2] = torch.from_numpy(out[2]).permute(0,3,1,2)
+            out, train_out = forward_detect(model_detect, out)
             # sys.exit(0)
             t0 += time_synchronized() - t
 
