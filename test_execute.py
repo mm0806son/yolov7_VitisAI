@@ -61,7 +61,6 @@ def runDPU(dpu, img):
     output_ndim_1 = tuple(outputTensors[1].dims)
     output_ndim_2 = tuple(outputTensors[2].dims)
 
-
     # we can avoid output scaling if use argmax instead of softmax
     # output_fixpos = outputTensors[0].get_attr("fix_point")
     # output_scale = 1 / (2**output_fixpos)
@@ -70,7 +69,11 @@ def runDPU(dpu, img):
     n_of_images = len(img)
     count = 0
 
-    outputData = [np.empty(output_ndim_0, dtype=np.int8, order="C"),np.empty(output_ndim_1, dtype=np.int8, order="C"),np.empty(output_ndim_2, dtype=np.int8, order="C")]
+    outputData = [
+        np.empty(output_ndim_0, dtype=np.float32, order="C"),
+        np.empty(output_ndim_1, dtype=np.float32, order="C"),
+        np.empty(output_ndim_2, dtype=np.float32, order="C"),
+    ]
 
     while count < n_of_images:
         if count + batchSize <= n_of_images:
@@ -91,7 +94,13 @@ def runDPU(dpu, img):
         job_id = dpu.execute_async(inputData, outputData)
         dpu.wait(job_id)
 
+        # output scaling
+        outputData[0] = torch.from_numpy(outputData[0] / (2 ** outputTensors[0].get_attr("fix_point"))).permute(0, 3, 1, 2)
+        outputData[1] = torch.from_numpy(outputData[1] / (2 ** outputTensors[1].get_attr("fix_point"))).permute(0, 3, 1, 2)
+        outputData[2] = torch.from_numpy(outputData[2] / (2 ** outputTensors[2].get_attr("fix_point"))).permute(0, 3, 1, 2)
+
         return outputData
+
 
 '''
 def runDPU(dpu, img):
@@ -207,8 +216,6 @@ def test(
     #     quant_model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(quant_model.parameters())))  # run once
     task = opt.task if opt.task in ("train", "val", "test") else "val"  # path to train/val/test images
 
-    global out_q
-
     g = xir.Graph.deserialize(xmodel)
     subgraphs = get_child_subgraph_dpu(g)
     dpu_runner = vart.Runner.create_runner(subgraphs[0], "run")
@@ -264,12 +271,12 @@ def test(
             fps = float(nb / timetotal)
             print("Throughput=%.2f fps, total frames = %.0f, time=%.4f seconds" % (fps, nb, timetotal))
 
-            out = list(out)
-            # out_y = out[1:]
+            # out = list(out)
+
             # print("\n\033[36m ### out ### \n",type(out),type(out_y), "\033[0m\n")
-            out[0] = torch.from_numpy(out[0]).permute(0,3,1,2)
-            out[1] = torch.from_numpy(out[1]).permute(0,3,1,2)
-            out[2] = torch.from_numpy(out[2]).permute(0,3,1,2)
+            # out[0] = torch.from_numpy(out[0]).permute(0, 3, 1, 2)
+            # out[1] = torch.from_numpy(out[1]).permute(0, 3, 1, 2)
+            # out[2] = torch.from_numpy(out[2]).permute(0, 3, 1, 2)
             out, train_out = forward_detect(model_detect, out)
             # sys.exit(0)
             t0 += time_synchronized() - t
