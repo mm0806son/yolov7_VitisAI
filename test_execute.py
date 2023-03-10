@@ -34,6 +34,7 @@ from utils.general import (
     set_logging,
     increment_path,
     colorstr,
+    increment_path_wandb,
 )
 from utils.metrics import ap_per_class, ConfusionMatrix
 from utils.plots import plot_images, output_to_target, plot_study_txt
@@ -141,7 +142,7 @@ def test(
     device = select_device(opt.device, batch_size=batch_size)
 
     # Directories
-    save_dir, save_name = increment_path(opt.project, opt.name, exist_ok=opt.exist_ok)  # increment run
+    save_dir, save_name = increment_path_wandb(opt.project, opt.name, exist_ok=opt.exist_ok)  # increment run
     save_dir = Path(save_dir)
     (save_dir / "labels" if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
