@@ -22,7 +22,6 @@ import vart
 from models.experimental import attempt_load
 from utils.datasets import create_dataloader
 from utils.general import (
-    coco80_to_coco91_class,
     check_dataset,
     check_file,
     check_img_size,
@@ -40,6 +39,8 @@ from utils.metrics import ap_per_class, ConfusionMatrix
 from utils.plots import plot_images, output_to_target, plot_study_txt
 from utils.torch_utils import select_device, time_synchronized, TracedModel
 
+import wandb
+
 
 def get_child_subgraph_dpu(graph: "Graph") -> List["Subgraph"]:
     assert graph is not None, "'graph' should not be None."
@@ -54,6 +55,7 @@ def get_child_subgraph_dpu(graph: "Graph") -> List["Subgraph"]:
 
 def runDPU(dpu, img):
     """get tensor"""
+    # TODO Multi-thread
     inputTensors = dpu.get_input_tensors()
     outputTensors = dpu.get_output_tensors()
     input_ndim = tuple(inputTensors[0].dims)
@@ -61,9 +63,6 @@ def runDPU(dpu, img):
     output_ndim_1 = tuple(outputTensors[1].dims)
     output_ndim_2 = tuple(outputTensors[2].dims)
 
-    # we can avoid output scaling if use argmax instead of softmax
-    # output_fixpos = outputTensors[0].get_attr("fix_point")
-    # output_scale = 1 / (2**output_fixpos)
     start = 0
     batchSize = input_ndim[0]
     n_of_images = len(img)
@@ -95,50 +94,19 @@ def runDPU(dpu, img):
         dpu.wait(job_id)
 
         # output scaling
-        outputData[0] = torch.from_numpy(outputData[0] / (2 ** outputTensors[0].get_attr("fix_point"))).permute(0, 3, 1, 2)
-        outputData[1] = torch.from_numpy(outputData[1] / (2 ** outputTensors[1].get_attr("fix_point"))).permute(0, 3, 1, 2)
-        outputData[2] = torch.from_numpy(outputData[2] / (2 ** outputTensors[2].get_attr("fix_point"))).permute(0, 3, 1, 2)
+        # output_fixpos = outputTensors[0].get_attr("fix_point")
+        # output_scale = 1 / (2**output_fixpos)
+        outputData[0] = torch.from_numpy(outputData[0] / (2 ** outputTensors[0].get_attr("fix_point"))).permute(
+            0, 3, 1, 2
+        )
+        outputData[1] = torch.from_numpy(outputData[1] / (2 ** outputTensors[1].get_attr("fix_point"))).permute(
+            0, 3, 1, 2
+        )
+        outputData[2] = torch.from_numpy(outputData[2] / (2 ** outputTensors[2].get_attr("fix_point"))).permute(
+            0, 3, 1, 2
+        )
 
         return outputData
-
-
-'''
-def runDPU(dpu, img):
-    """get tensor"""
-    inputTensors = dpu.get_input_tensors()
-    outputTensors = dpu.get_output_tensors()
-    input_ndim = tuple(inputTensors[0].dims)
-    output_ndim = tuple(outputTensors[0].dims)
-
-    batchSize = input_ndim[0]
-    n_of_images = len(img)
-    count = 0
-    while count < n_of_images:
-        if count + batchSize <= n_of_images:
-            runSize = batchSize
-        else:
-            runSize = n_of_images - count
-
-        """prepare batch input/output """
-        outputData = []
-        inputData = []
-        inputData = [np.empty(input_ndim, dtype=np.float32, order="C")]
-        outputData = [np.empty(output_ndim, dtype=np.float32, order="C")]*3
-
-        """init input image to input buffer """
-        for j in range(runSize):
-            imageRun = inputData[0]
-            imageRun[j, ...] = img[(count + j) % n_of_images].reshape(input_ndim[1:])
-
-        """run with batch """
-        job_id = dpu.execute_async(inputData, outputData)
-        dpu.wait(job_id)
-
-        """store output vectors """
-
-        count = count + runSize
-    return outputData
-'''
 
 
 def forward_detect(model_detect, x):
@@ -154,12 +122,7 @@ def test(
     imgsz=640,
     conf_thres=0.001,
     iou_thres=0.6,  # for NMS
-    save_json=False,
     single_cls=False,
-    augment=False,
-    verbose=False,
-    target="DPUCZDX8G_ISA1_B4096",
-    config_file=None,
     model=None,
     dataloader=None,
     save_dir=Path(""),  # for saving images
@@ -169,25 +132,20 @@ def test(
     plots=False,
     wandb_logger=None,
     compute_loss=None,
-    half_precision=True,
-    trace=False,
-    is_coco=False,
     v5_metric=False,
     threads=1,
     xmodel="quantize_result/compiled/yolov7.xmodel",
 ):
     # Initialize/load model and set device
-    # training = model is not None
-    # if training:  # called by train.py
-    #     device = next(model.parameters()).device  # get model device
-
-    # else:  # called directly
     set_logging()
     device = select_device(opt.device, batch_size=batch_size)
 
     # Directories
-    save_dir = Path(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))  # increment run
+    save_dir, save_name = increment_path(opt.project, opt.name, exist_ok=opt.exist_ok)  # increment run
+    save_dir = Path(save_dir)
     (save_dir / "labels" if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
+
+    wandb.init(project=opt.project, name=save_name, notes=opt.notes)
 
     # Load model
     model = attempt_load(weights, map_location=device)  # load FP32 model
@@ -199,7 +157,6 @@ def test(
     model_detect.eval()
 
     if isinstance(data, str):
-        is_coco = data.endswith("coco.yaml")
         with open(data) as f:
             data = yaml.load(f, Loader=yaml.SafeLoader)
     check_dataset(data)  # check
@@ -212,8 +169,6 @@ def test(
     if wandb_logger and wandb_logger.wandb:
         log_imgs = min(wandb_logger.log_imgs, 100)
     # Dataloader
-    # if device.type != "cpu":
-    #     quant_model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(quant_model.parameters())))  # run once
     task = opt.task if opt.task in ("train", "val", "test") else "val"  # path to train/val/test images
 
     g = xir.Graph.deserialize(xmodel)
@@ -255,30 +210,18 @@ def test(
         with torch.no_grad():
             # Run model
             t = time_synchronized()
-            # print("\n############ out ############\n")
-            # print(quant_model(img, augment=augment))
-            # print(f"len(out) = ", len(quant_model(img, augment=augment)))
-            # sys.exit(0)
-
-            # out = quant_model(img, augment=augment)  # ! inference and training outputs
 
             # out_q = [None] * nb
-            time1 = time.time()
+
+            # time1 = time.time()
             out = runDPU(dpu_runner, img)
-            time2 = time.time()
-            timetotal = time2 - time1
+            # time2 = time.time()
+            # timetotal = time2 - time1
+            # fps = float(nb / timetotal)
+            # print("Throughput=%.2f fps, total frames = %.0f, time=%.4f seconds" % (fps, nb, timetotal))
 
-            fps = float(nb / timetotal)
-            print("Throughput=%.2f fps, total frames = %.0f, time=%.4f seconds" % (fps, nb, timetotal))
-
-            # out = list(out)
-
-            # print("\n\033[36m ### out ### \n",type(out),type(out_y), "\033[0m\n")
-            # out[0] = torch.from_numpy(out[0]).permute(0, 3, 1, 2)
-            # out[1] = torch.from_numpy(out[1]).permute(0, 3, 1, 2)
-            # out[2] = torch.from_numpy(out[2]).permute(0, 3, 1, 2)
             out, train_out = forward_detect(model_detect, out)
-            # sys.exit(0)
+
             t0 += time_synchronized() - t
 
             # Compute loss
@@ -434,16 +377,13 @@ if __name__ == "__main__":
     parser.add_argument("--task", default="val", help="train, val, test, speed or study")
     parser.add_argument("--device", default="", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
     parser.add_argument("--single-cls", action="store_true", help="treat as single-class dataset")
-    parser.add_argument("--augment", action="store_true", help="augmented inference")
-    parser.add_argument("--verbose", action="store_true", help="report mAP by class")
     parser.add_argument("--save-txt", action="store_true", help="save results to *.txt")
     parser.add_argument("--save-hybrid", action="store_true", help="save label+prediction hybrid results to *.txt")
     parser.add_argument("--save-conf", action="store_true", help="save confidences in --save-txt labels")
     parser.add_argument("--project", default="runs/test", help="save to project/name")
     parser.add_argument("--name", default="exp", help="save to project/name")
     parser.add_argument("--exist-ok", action="store_true", help="existing project/name ok, do not increment")
-    parser.add_argument("--no-trace", action="store_true", help="don`t trace model")
-    # parser.add_argument("--v5-metric", action="store_true", help="assume maximum recall as 1.0 in AP calculation".)
+    parser.add_argument("--notes", type=str, default=None, help="notes of this run for wandb")
 
     parser.add_argument(
         "--target", dest="target", default="DPUCZDX8G_ISA1_B4096", nargs="?", const="", help="specify target device"
@@ -466,13 +406,9 @@ if __name__ == "__main__":
         opt.conf_thres,
         opt.iou_thres,
         opt.single_cls,
-        opt.augment,
-        opt.verbose,
-        config_file=opt.config_file,
         save_txt=opt.save_txt | opt.save_hybrid,
         save_hybrid=opt.save_hybrid,
         save_conf=opt.save_conf,
         threads=opt.threads,
         xmodel=opt.xmodel,
-        trace=not opt.no_trace,
     )
