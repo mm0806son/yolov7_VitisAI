@@ -1,3 +1,12 @@
+'''
+@Name           :split_dataset.py
+@Description    :Generate train, val, test.txt files containing path of images.
+@Time           :2023/03/14 13:50:09
+@Author         :Zijie NING
+@Version        :1.0
+'''
+
+
 import argparse
 import random
 
@@ -45,8 +54,8 @@ def split_train_test_valid(input_path, output_path, test_len, val_len):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="split_dataset.py")
-    parser.add_argument("--file", type=str, default="MTV2/MTV2_all.txt", help="List file of all images")
-    parser.add_argument("--output_path", type=str, default="MTV2/", help="Path of the output files")
+    parser.add_argument("--file", type=str, default="../MTV2/MTV2_all.txt", help="List file of all images")
+    parser.add_argument("--output_path", type=str, default="../MTV2/", help="Path of the output files")
     parser.add_argument("--test_len", type=int, default=10000, help="Number of images for test")
     parser.add_argument("--val_len", type=int, default=10000, help="Number of images for val")
     opt = parser.parse_args()
