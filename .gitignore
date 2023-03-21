@@ -268,3 +268,4 @@ quantize_result/
 *.xz
 
 test_quant.sh
+Yolov7_VitisAI/
