@@ -261,9 +261,15 @@ com_crashlytics_export_strings.xml
 crashlytics.properties
 crashlytics-build.properties
 fabric.properties
-MTV2/
 
 quantize_result/
 
 *.xz
-MTV2_*
+
+csdn/
+Yolov7_VitisAI
+MTV2/*_YOLO
+MTV2/calib
+MTV2_val/
+MTV2_test/
+*.cache
