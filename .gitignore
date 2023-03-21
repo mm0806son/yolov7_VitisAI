@@ -261,8 +261,10 @@ com_crashlytics_export_strings.xml
 crashlytics.properties
 crashlytics-build.properties
 fabric.properties
-MTV2/
+MTV2*
 
 quantize_result/
 
 *.xz
+
+test_quant.sh
