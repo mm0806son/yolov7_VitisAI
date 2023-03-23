@@ -276,3 +276,4 @@ MTV2/calib
 MTV2_val/
 MTV2_test/
 *.cache
+test.sh
