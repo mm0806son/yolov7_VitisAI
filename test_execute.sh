@@ -1,1 +1,1 @@
-python test_execute.py --device cpu --data data/odessa.yaml --img 640 --batch-size 1 --weights runs/train/detect/weights/best.pt --name yolov7_tiny_odessa --xmodel quantize_result/csdn/Model_int.xmodel 
+python test_execute.py --device cpu --data data/odessa.yaml --img 640 --batch-size 32 --weights runs/yolov7_tiny_odessa.pt --name yolov7_tiny_odessa --xmodel quantize_result/yolov7_tiny_odessa_quant/yolov7_tiny_odessa_quant.xmodel --project yolov7_VitisAI

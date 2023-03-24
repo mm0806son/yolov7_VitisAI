@@ -42,7 +42,7 @@ from utils.torch_utils import select_device, time_synchronized, TracedModel
 
 import wandb
 
-
+count = 0
 def get_child_subgraph_dpu(graph: "Graph") -> List["Subgraph"]:
     assert graph is not None, "'graph' should not be None."
     root_subgraph = graph.get_root_subgraph()
@@ -64,10 +64,13 @@ def runDPU(dpu, img):
     output_ndim_1 = tuple(outputTensors[1].dims)
     output_ndim_2 = tuple(outputTensors[2].dims)
 
-    start = 0
-    batchSize = input_ndim[0]
-    n_of_images = len(img)
-    count = 0
+    global count
+
+    # start = 0
+    # batchSize = input_ndim[0]
+    batchSize = img.shape[0]
+    # n_of_images = len(img)
+    # count = 0
 
     outputData = [
         np.empty(output_ndim_0, dtype=np.float32, order="C"),
@@ -75,39 +78,44 @@ def runDPU(dpu, img):
         np.empty(output_ndim_2, dtype=np.float32, order="C"),
     ]
 
-    while count < n_of_images:
-        if count + batchSize <= n_of_images:
-            runSize = batchSize
-        else:
-            runSize = n_of_images - count
+    # while count < n_of_images:
 
-        """prepare batch input/output """
-        inputData = []
-        inputData = [np.empty(input_ndim, dtype=np.int8, order="C")]
+    # if count + batchSize <= n_of_images:
+    #     runSize = batchSize
+    # else:
+    #     runSize = n_of_images - count
 
-        """init input image to input buffer """
-        # ? imageRun defined but never used?
-        for j in range(runSize):
-            imageRun = inputData[0]
-            imageRun[j, ...] = img[(count + j) % n_of_images].reshape(input_ndim[1:])
-        """run """
-        job_id = dpu.execute_async(inputData, outputData)
-        dpu.wait(job_id)
+    """prepare batch input/output """
+    inputData = []
+    inputData = [np.empty(input_ndim, dtype=np.int8, order="C")]
 
-        # output scaling
-        # output_fixpos = outputTensors[0].get_attr("fix_point")
-        # output_scale = 1 / (2**output_fixpos)
-        outputData[0] = torch.from_numpy(outputData[0] / (2 ** outputTensors[0].get_attr("fix_point"))).permute(
-            0, 3, 1, 2
-        )
-        outputData[1] = torch.from_numpy(outputData[1] / (2 ** outputTensors[1].get_attr("fix_point"))).permute(
-            0, 3, 1, 2
-        )
-        outputData[2] = torch.from_numpy(outputData[2] / (2 ** outputTensors[2].get_attr("fix_point"))).permute(
-            0, 3, 1, 2
-        )
+    """init input image to input buffer """
+    # ? imageRun defined but never used?
+    # for i in range(runSize):
+    for i in range(batchSize):
+        imageRun = inputData[0]
+        count = count+1
+        try:
+            imageRun[i, ...] = img[i].reshape(input_ndim[1:])
+            # print(colorstr("green", "SUCCESS: "), colorstr("green", count), img.shape)
+        except:
+            print(colorstr("red", "ERROR: Shape mismatch"), colorstr("red", count), img.shape)
+    """run """
+    # job_id = dpu.execute_async(inputData, outputData)
+    job_id = dpu.execute_async(imageRun, outputData)
 
-        return outputData
+    t = time_synchronized()
+    dpu.wait(job_id)
+    t1 = time_synchronized() - t
+    # print(colorstr("green", t1))
+    # output scaling
+    # output_fixpos = outputTensors[0].get_attr("fix_point")
+    # output_scale = 1 / (2**output_fixpos)
+    outputData[0] = torch.from_numpy(outputData[0] / (2 ** outputTensors[0].get_attr("fix_point"))).permute(0, 3, 1, 2)
+    outputData[1] = torch.from_numpy(outputData[1] / (2 ** outputTensors[1].get_attr("fix_point"))).permute(0, 3, 1, 2)
+    outputData[2] = torch.from_numpy(outputData[2] / (2 ** outputTensors[2].get_attr("fix_point"))).permute(0, 3, 1, 2)
+
+    return outputData
 
 
 def forward_detect(model_detect, x):
