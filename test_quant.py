@@ -92,7 +92,7 @@ def test(
     imgsz = check_img_size(imgsz, s=gs)  # check img_size
 
     # ! inspect
-    input = torch.randn([batch_size, 3, 512, 672])  # ! 640 640?
+    input = torch.randn([batch_size, 3, 640, 640])  # ! 640 640?
     # layer_detect = model.model[-1]
     model_detect = copy.deepcopy(model)
     model_ori = copy.deepcopy(model)
