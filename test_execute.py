@@ -184,7 +184,7 @@ def test(
     subgraphs = get_child_subgraph_dpu(g)
     dpu_runner = vart.Runner.create_runner(subgraphs[0], "run")
 
-    # 读取量化后模型对输入的定点数数据的小数点位置，得出在浮点数转定点数时需要乘的系数input_scale
+    # input scaling
     input_fixpos = dpu_runner.get_input_tensors()[0].get_attr("fix_point")
     input_scale = 2**input_fixpos
 
@@ -209,7 +209,6 @@ def test(
     loss = torch.zeros(3, device=device)
     jdict, stats, ap, ap_class, wandb_images = [], [], [], [], []
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
-        out_q = [None] * batch_size
         img = img.to(device, non_blocking=True)
         img = img.float()
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
