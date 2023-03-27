@@ -138,7 +138,7 @@ def test(
     save_txt=False,  # for auto-labelling
     save_hybrid=False,  # for hybrid auto-labelling
     save_conf=False,  # save auto-label confidences
-    plots=True,
+    plots=True, # plot results
     wandb_logger=None,
     compute_loss=None,
     v5_metric=False,
