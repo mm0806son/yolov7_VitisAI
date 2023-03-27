@@ -274,3 +274,4 @@ MTV2_val/
 MTV2_test/
 *.cache
 *.sh
+cfg/training/yolov7-tiny_odessa.yaml
