@@ -640,7 +640,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
         img = np.ascontiguousarray(img)
 
-        # 将图像维度调整到DPU要求的定点输入
+        # Input scaling
         img = torch.from_numpy(img)
         img = img.permute(1, 2, 0).float().numpy() / 255 * self.input_scale + 0.5
         img = img.astype(np.int8)
