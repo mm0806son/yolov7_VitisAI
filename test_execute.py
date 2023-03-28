@@ -186,9 +186,9 @@ def test(
     subgraphs = get_child_subgraph_dpu(g)
     dpu_runner = vart.Runner.create_runner(subgraphs[0], "run")
 
-    # # TODO 读取量化后模型对输入的定点数数据的小数点位置，得出在浮点数转定点数时需要乘的系数input_scale
-    # input_fixpos = dpu_runner.get_input_tensors()[0].get_attr("fix_point")
-    # input_scale = 2**input_fixpos
+    # input scaling
+    input_fixpos = dpu_runner.get_input_tensors()[0].get_attr("fix_point")
+    input_scale = 2**input_fixpos
 
     # Dataloader
     if device.type != "cpu":
@@ -210,9 +210,15 @@ def test(
     loss = torch.zeros(3, device=device)
     jdict, stats, ap, ap_class, wandb_images = [], [], [], [], []
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
-        img = img.to(device, non_blocking=True)
-        img = img.half() if half else img.float()  # uint8 to fp16/32
-        img /= 255.0  # 0 - 255 to 0.0 - 1.0
+        # Input scaling
+        # img = torch.from_numpy(img)
+        img_DPU  = img.permute(0, 2, 3, 1).float().numpy() / 255 * input_scale
+        img_DPU = img_DPU.astype(np.int8)
+        img_DPU = torch.from_numpy(img_DPU)
+        
+        img_DPU = img_DPU.to(device, non_blocking=True)
+        img_DPU = img_DPU.half() if half else img_DPU.float()  # uint8 to fp16/32
+        img_DPU /= 255.0  # 0 - 255 to 0.0 - 1.0
         targets = targets.to(device)
         nb, _, height, width = img.shape  # batch size, channels, height, width
 
