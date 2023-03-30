@@ -68,13 +68,6 @@ def runDPU(dpu, img):
         np.empty(output_ndim_2, dtype=np.float32, order="C"),
     ]
 
-    # while count < n_of_images:
-
-    # if count + batchSize <= n_of_images:
-    #     runSize = batchSize
-    # else:
-    #     runSize = n_of_images - count
-
     """prepare batch input/output """
     inputData = []
     inputData = [np.empty(input_ndim, dtype=np.int8, order="C")]
@@ -98,9 +91,8 @@ def runDPU(dpu, img):
     dpu.wait(job_id)
     t1 = time_synchronized() - t
     # print(colorstr("green", t1))
+
     # output scaling
-    # output_fixpos = outputTensors[0].get_attr("fix_point")
-    # output_scale = 1 / (2**output_fixpos)
     outputData[0] = torch.from_numpy(outputData[0] / (2 ** outputTensors[0].get_attr("fix_point"))).permute(0, 3, 1, 2)
     outputData[1] = torch.from_numpy(outputData[1] / (2 ** outputTensors[1].get_attr("fix_point"))).permute(0, 3, 1, 2)
     outputData[2] = torch.from_numpy(outputData[2] / (2 ** outputTensors[2].get_attr("fix_point"))).permute(0, 3, 1, 2)
@@ -154,7 +146,7 @@ def test(
     imgsz = check_img_size(imgsz, s=gs)  # check img_size
 
     model_detect = copy.deepcopy(model)
-    model_detect.model = nn.Sequential(model.model[-1])
+    model_detect.model = nn.Sequential(model.model[-1]) # Last layer
     model_detect.eval()
 
     if trace:
@@ -210,22 +202,23 @@ def test(
     loss = torch.zeros(3, device=device)
     jdict, stats, ap, ap_class, wandb_images = [], [], [], [], []
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
+        nb, _, height, width = img.shape  # batch size, channels, height, width
         # Input scaling
-        # img = torch.from_numpy(img)
+        # img_DPU.shape = batch size, height, width, channels
         img_DPU  = img.permute(0, 2, 3, 1).float().numpy() / 255 * input_scale
         img_DPU = img_DPU.astype(np.int8)
         img_DPU = torch.from_numpy(img_DPU)
         
-        img_DPU = img_DPU.to(device, non_blocking=True)
-        img_DPU = img_DPU.half() if half else img_DPU.float()  # uint8 to fp16/32
-        img_DPU /= 255.0  # 0 - 255 to 0.0 - 1.0
+        img = img.to(device, non_blocking=True)
+        img = img.half() if half else img.float()  # uint8 to fp16/32
+        img /= 255.0  # 0 - 255 to 0.0 - 1.0
         targets = targets.to(device)
-        nb, _, height, width = img.shape  # batch size, channels, height, width
+        
 
         with torch.no_grad():
             # Run model
             t = time_synchronized()
-            out_DPU = runDPU(dpu_runner, img)
+            out_DPU = runDPU(dpu_runner, img_DPU)
             out, train_out = forward_detect(model_detect, out_DPU)
             t0 += time_synchronized() - t
 
