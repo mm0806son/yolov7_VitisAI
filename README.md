@@ -1,5 +1,7 @@
 # yolov7_VitisAI
-This is the implementation of YOLOv7 on Vitis AI (KV260)
+This is the implementation of YOLOv7 on Vitis AI (KV260).
+
+See [here](https://github.com/mm0806son/yolov7_VitisAI/blob/main/Implement_of_Yolov7_on_Vitis_AI_KV260.pdf) for the overall tutorial.
 
 ## Branches
 
